@@ -154,9 +154,9 @@ Do not provide unsafe chemical treatment instructions.
 """
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
+    model="gemini-2.5-flash",
+    contents=prompt
+)
 
         return jsonify({
             "status": "success",
