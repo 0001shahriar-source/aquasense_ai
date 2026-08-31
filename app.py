@@ -101,10 +101,16 @@ Recommendations should be general monitoring guidance.
 
     except Exception as e:
 
-        return jsonify({
-            "status": "error",
-            "error": str(e)
-        }), 500
+    import traceback
+
+    print("GEMINI ERROR:")
+    print(traceback.format_exc())
+
+    return jsonify({
+        "status": "error",
+        "error_type": type(e).__name__,
+        "error": str(e)
+    }), 500
 
 
 # =========================
