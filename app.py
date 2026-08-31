@@ -1,7 +1,7 @@
-```python
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
+import traceback
 
 from google import genai
 
@@ -51,7 +51,7 @@ def ai_advice():
             }), 500
 
         # Get JSON data
-        data = request.get_json()
+        data = request.get_json(silent=True)
 
         if not data:
             return jsonify({
@@ -67,10 +67,7 @@ def ai_advice():
         bod = float(data["bod"])
 
         # ML prediction
-        water_quality = data.get(
-            "water_quality",
-            "Unknown"
-        )
+        water_quality = data.get("water_quality", "Unknown")
 
         # =====================================================
         # GEMINI PROMPT
@@ -111,7 +108,7 @@ Recommendations should be general monitoring guidance.
         # =====================================================
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             contents=prompt
         )
 
@@ -143,8 +140,6 @@ Recommendations should be general monitoring guidance.
 
     except Exception as e:
 
-        import traceback
-
         print("====================================")
         print("GEMINI ERROR")
         print("====================================")
@@ -174,7 +169,7 @@ def chat():
             }), 500
 
         # Get JSON data
-        data = request.get_json()
+        data = request.get_json(silent=True)
 
         if not data:
             return jsonify({
@@ -182,13 +177,10 @@ def chat():
                 "error": "JSON data is required"
             }), 400
 
-        question = data.get(
-            "question",
-            ""
-        )
+        question = data.get("question", "")
 
         # Check question
-        if not question.strip():
+        if not isinstance(question, str) or not question.strip():
             return jsonify({
                 "status": "error",
                 "error": "Question is required"
@@ -227,7 +219,7 @@ Do not provide unsafe chemical treatment instructions.
         # =====================================================
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             contents=prompt
         )
 
@@ -241,8 +233,6 @@ Do not provide unsafe chemical treatment instructions.
         })
 
     except Exception as e:
-
-        import traceback
 
         print("====================================")
         print("CHAT GEMINI ERROR")
@@ -264,11 +254,5 @@ if __name__ == "__main__":
 
     app.run(
         host="0.0.0.0",
-        port=int(
-            os.environ.get(
-                "PORT",
-                5000
-            )
-        )
+        port=int(os.environ.get("PORT", 5000))
     )
-```
