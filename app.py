@@ -1,9 +1,15 @@
+```python
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import traceback
 
 from google import genai
+
+
+# =========================================================
+# FLASK APP
+# =========================================================
 
 app = Flask(__name__)
 CORS(app)
@@ -43,15 +49,22 @@ def ai_advice():
 
     try:
 
+        # -----------------------------------------------------
         # Check Gemini API
+        # -----------------------------------------------------
+
         if client is None:
             return jsonify({
                 "status": "error",
                 "error": "Gemini API key is not configured"
             }), 500
 
+
+        # -----------------------------------------------------
         # Get JSON data
-        data = request.get_json(silent=True)
+        # -----------------------------------------------------
+
+        data = request.get_json()
 
         if not data:
             return jsonify({
@@ -59,15 +72,27 @@ def ai_advice():
                 "error": "JSON data is required"
             }), 400
 
+
+        # -----------------------------------------------------
         # Get sensor values
+        # -----------------------------------------------------
+
         turbidity = float(data["turbidity"])
         do = float(data["do"])
         ph = float(data["ph"])
         temp = float(data["temp"])
         bod = float(data["bod"])
 
+
+        # -----------------------------------------------------
         # ML prediction
-        water_quality = data.get("water_quality", "Unknown")
+        # -----------------------------------------------------
+
+        water_quality = data.get(
+            "water_quality",
+            "Unknown"
+        )
+
 
         # =====================================================
         # GEMINI PROMPT
@@ -88,7 +113,7 @@ BOD: {bod} mg/L
 Machine Learning Prediction:
 {water_quality}
 
-Provide a concise analysis using these sections:
+Provide a concise analysis using exactly these sections:
 
 1. Overall Condition
 2. Main Reasons
@@ -98,10 +123,15 @@ Provide a concise analysis using these sections:
 
 Use simple language suitable for a fish farmer.
 
-Do not invent sensor measurements.
-Do not provide dangerous chemical dosages.
-Recommendations should be general monitoring guidance.
+Important instructions:
+
+- Do not invent sensor measurements.
+- Use only the values provided above.
+- Do not provide dangerous chemical dosages.
+- Do not recommend unsafe chemical treatment.
+- Recommendations should be general monitoring and pond-management guidance.
 """
+
 
         # =====================================================
         # GEMINI GENERATION
@@ -112,6 +142,14 @@ Recommendations should be general monitoring guidance.
             contents=prompt
         )
 
+
+        # -----------------------------------------------------
+        # Get AI response
+        # -----------------------------------------------------
+
+        ai_text = response.text if response.text else "No AI response generated."
+
+
         # =====================================================
         # SUCCESS RESPONSE
         # =====================================================
@@ -119,8 +157,13 @@ Recommendations should be general monitoring guidance.
         return jsonify({
             "status": "success",
             "water_quality": water_quality,
-            "ai_advice": response.text
-        })
+            "ai_advice": ai_text
+        }), 200
+
+
+    # =========================================================
+    # ERROR: MISSING FIELD
+    # =========================================================
 
     except KeyError as e:
 
@@ -130,6 +173,11 @@ Recommendations should be general monitoring guidance.
             "error": f"Missing required field: {str(e)}"
         }), 400
 
+
+    # =========================================================
+    # ERROR: INVALID VALUE
+    # =========================================================
+
     except ValueError as e:
 
         return jsonify({
@@ -138,10 +186,15 @@ Recommendations should be general monitoring guidance.
             "error": f"Invalid sensor value: {str(e)}"
         }), 400
 
+
+    # =========================================================
+    # GENERAL ERROR
+    # =========================================================
+
     except Exception as e:
 
         print("====================================")
-        print("GEMINI ERROR")
+        print("GEMINI WATER ADVICE ERROR")
         print("====================================")
         print(traceback.format_exc())
 
@@ -161,15 +214,22 @@ def chat():
 
     try:
 
+        # -----------------------------------------------------
         # Check Gemini API
+        # -----------------------------------------------------
+
         if client is None:
             return jsonify({
                 "status": "error",
                 "error": "Gemini API key is not configured"
             }), 500
 
+
+        # -----------------------------------------------------
         # Get JSON data
-        data = request.get_json(silent=True)
+        # -----------------------------------------------------
+
+        data = request.get_json()
 
         if not data:
             return jsonify({
@@ -177,14 +237,28 @@ def chat():
                 "error": "JSON data is required"
             }), 400
 
-        question = data.get("question", "")
 
+        # -----------------------------------------------------
+        # Get question
+        # -----------------------------------------------------
+
+        question = data.get(
+            "question",
+            ""
+        )
+
+
+        # -----------------------------------------------------
         # Check question
+        # -----------------------------------------------------
+
         if not isinstance(question, str) or not question.strip():
+
             return jsonify({
                 "status": "error",
                 "error": "Question is required"
             }), 400
+
 
         # =====================================================
         # CHATBOT PROMPT
@@ -195,6 +269,7 @@ You are AquaSense AI, an AI assistant
 for aquaculture and water quality monitoring.
 
 User question:
+
 {question}
 
 Answer in simple and understandable language.
@@ -210,9 +285,14 @@ Focus on:
 - BOD
 - Pond management
 
-Do not invent sensor readings.
-Do not provide unsafe chemical treatment instructions.
+Important instructions:
+
+- Do not invent sensor readings.
+- Do not pretend to have access to sensor data unless it is provided.
+- Do not provide unsafe chemical treatment instructions.
+- Give practical and general aquaculture guidance.
 """
+
 
         # =====================================================
         # GEMINI GENERATION
@@ -223,14 +303,27 @@ Do not provide unsafe chemical treatment instructions.
             contents=prompt
         )
 
+
+        # -----------------------------------------------------
+        # Get AI response
+        # -----------------------------------------------------
+
+        answer = response.text if response.text else "No AI response generated."
+
+
         # =====================================================
         # SUCCESS RESPONSE
         # =====================================================
 
         return jsonify({
             "status": "success",
-            "answer": response.text
-        })
+            "answer": answer
+        }), 200
+
+
+    # =========================================================
+    # GENERAL ERROR
+    # =========================================================
 
     except Exception as e:
 
@@ -247,12 +340,33 @@ Do not provide unsafe chemical treatment instructions.
 
 
 # =========================================================
+# HEALTH CHECK
+# =========================================================
+
+@app.route("/health", methods=["GET"])
+def health():
+
+    return jsonify({
+        "status": "healthy",
+        "gemini": "enabled" if client else "disabled"
+    })
+
+
+# =========================================================
 # RUN SERVER
 # =========================================================
 
 if __name__ == "__main__":
 
+    port = int(
+        os.environ.get(
+            "PORT",
+            5000
+        )
+    )
+
     app.run(
         host="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000))
+        port=port
     )
+```
