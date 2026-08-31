@@ -1,4 +1,3 @@
-```python
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
@@ -6,103 +5,124 @@ import traceback
 
 from google import genai
 
-
-# =========================================================
-# FLASK APP
-# =========================================================
-
-app = Flask(__name__)
+app = Flask(**name**)
 CORS(app)
 
-
 # =========================================================
+
 # GEMINI API CONFIGURATION
+
 # =========================================================
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if GEMINI_API_KEY:
-    client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 else:
-    client = None
+client = None
 
+# Current Gemini model
+
+GEMINI_MODEL = "gemini-3.7-flash"
 
 # =========================================================
+
 # HOME ROUTE
+
 # =========================================================
 
 @app.route("/", methods=["GET"])
 def home():
-
-    return jsonify({
-        "message": "AquaSense AI Gemini API is running",
-        "gemini": "enabled" if client else "disabled"
-    })
-
+return jsonify({
+"message": "AquaSense AI Gemini API is running",
+"gemini": "enabled" if client else "disabled",
+"model": GEMINI_MODEL
+})
 
 # =========================================================
+
+# HEALTH CHECK
+
+# =========================================================
+
+@app.route("/health", methods=["GET"])
+def health():
+return jsonify({
+"status": "healthy",
+"gemini": "enabled" if client else "disabled",
+"model": GEMINI_MODEL
+})
+
+# =========================================================
+
 # AI WATER QUALITY ADVICE
+
 # =========================================================
 
 @app.route("/ai-advice", methods=["POST"])
 def ai_advice():
 
-    try:
+```
+try:
 
-        # -----------------------------------------------------
-        # Check Gemini API
-        # -----------------------------------------------------
+    # Check API key
+    if client is None:
+        return jsonify({
+            "status": "error",
+            "error_type": "ConfigurationError",
+            "error": "GEMINI_API_KEY is not configured in Render."
+        }), 500
 
-        if client is None:
+    # Get JSON
+    data = request.get_json(silent=True)
+
+    if not data:
+        return jsonify({
+            "status": "error",
+            "error_type": "InvalidJSON",
+            "error": "JSON data is required."
+        }), 400
+
+    # Required sensor values
+    required_fields = [
+        "turbidity",
+        "do",
+        "ph",
+        "temp",
+        "bod"
+    ]
+
+    for field in required_fields:
+        if field not in data:
             return jsonify({
                 "status": "error",
-                "error": "Gemini API key is not configured"
-            }), 500
-
-
-        # -----------------------------------------------------
-        # Get JSON data
-        # -----------------------------------------------------
-
-        data = request.get_json()
-
-        if not data:
-            return jsonify({
-                "status": "error",
-                "error": "JSON data is required"
+                "error_type": "MissingField",
+                "error": f"Missing required field: {field}"
             }), 400
 
+    # Convert sensor values
+    turbidity = float(data["turbidity"])
+    do = float(data["do"])
+    ph = float(data["ph"])
+    temp = float(data["temp"])
+    bod = float(data["bod"])
 
-        # -----------------------------------------------------
-        # Get sensor values
-        # -----------------------------------------------------
+    # ML prediction
+    water_quality = str(
+        data.get("water_quality", "Unknown")
+    )
 
-        turbidity = float(data["turbidity"])
-        do = float(data["do"])
-        ph = float(data["ph"])
-        temp = float(data["temp"])
-        bod = float(data["bod"])
+    # =====================================================
+    # PROMPT
+    # =====================================================
 
+    prompt = f"""
+```
 
-        # -----------------------------------------------------
-        # ML prediction
-        # -----------------------------------------------------
+You are AquaSense AI, an intelligent water-quality
+assistant for aquaculture and fish farming.
 
-        water_quality = data.get(
-            "water_quality",
-            "Unknown"
-        )
-
-
-        # =====================================================
-        # GEMINI PROMPT
-        # =====================================================
-
-        prompt = f"""
-You are AquaSense AI, an intelligent
-water-quality assistant for aquaculture.
-
-Analyze the following water quality data:
+Analyze the following REAL sensor measurements:
 
 pH: {ph}
 Dissolved Oxygen (DO): {do} mg/L
@@ -113,7 +133,9 @@ BOD: {bod} mg/L
 Machine Learning Prediction:
 {water_quality}
 
-Provide a concise analysis using exactly these sections:
+Give a concise and useful analysis for a fish farmer.
+
+Use exactly these sections:
 
 1. Overall Condition
 2. Main Reasons
@@ -121,151 +143,116 @@ Provide a concise analysis using exactly these sections:
 4. Recommended Actions
 5. Parameters to Monitor
 
-Use simple language suitable for a fish farmer.
+Rules:
 
-Important instructions:
+* Use only the sensor values provided above.
+* Do not invent any measurements.
+* Explain problems in simple language.
+* Give general pond-management recommendations.
+* Do not provide dangerous chemical dosages.
+* Do not recommend unsafe chemical treatments.
+* Keep the response practical and concise.
+  """
 
-- Do not invent sensor measurements.
-- Use only the values provided above.
-- Do not provide dangerous chemical dosages.
-- Do not recommend unsafe chemical treatment.
-- Recommendations should be general monitoring and pond-management guidance.
-"""
+  ```
+    # =====================================================
+    # GEMINI REQUEST
+    # =====================================================
 
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt
+    )
 
-        # =====================================================
-        # GEMINI GENERATION
-        # =====================================================
+    ai_advice = response.text
 
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=prompt
-        )
+    if not ai_advice:
+        ai_advice = "Gemini returned an empty response."
 
+    # =====================================================
+    # SUCCESS
+    # =====================================================
 
-        # -----------------------------------------------------
-        # Get AI response
-        # -----------------------------------------------------
+    return jsonify({
+        "status": "success",
+        "water_quality": water_quality,
+        "ai_advice": ai_advice
+    }), 200
+  ```
 
-        ai_text = response.text if response.text else "No AI response generated."
+  except ValueError as e:
 
+  ```
+    return jsonify({
+        "status": "error",
+        "error_type": "InvalidValue",
+        "error": f"Invalid sensor value: {str(e)}"
+    }), 400
+  ```
 
-        # =====================================================
-        # SUCCESS RESPONSE
-        # =====================================================
+  except Exception as e:
 
-        return jsonify({
-            "status": "success",
-            "water_quality": water_quality,
-            "ai_advice": ai_text
-        }), 200
+  ```
+    print("==========================================")
+    print("AquaSense AI - WATER ADVICE ERROR")
+    print("==========================================")
+    print(traceback.format_exc())
 
-
-    # =========================================================
-    # ERROR: MISSING FIELD
-    # =========================================================
-
-    except KeyError as e:
-
-        return jsonify({
-            "status": "error",
-            "error_type": "MissingField",
-            "error": f"Missing required field: {str(e)}"
-        }), 400
-
-
-    # =========================================================
-    # ERROR: INVALID VALUE
-    # =========================================================
-
-    except ValueError as e:
-
-        return jsonify({
-            "status": "error",
-            "error_type": "InvalidValue",
-            "error": f"Invalid sensor value: {str(e)}"
-        }), 400
-
-
-    # =========================================================
-    # GENERAL ERROR
-    # =========================================================
-
-    except Exception as e:
-
-        print("====================================")
-        print("GEMINI WATER ADVICE ERROR")
-        print("====================================")
-        print(traceback.format_exc())
-
-        return jsonify({
-            "status": "error",
-            "error_type": type(e).__name__,
-            "error": str(e)
-        }), 500
-
+    return jsonify({
+        "status": "error",
+        "error_type": type(e).__name__,
+        "error": str(e)
+    }), 500
+  ```
 
 # =========================================================
+
 # AI CHATBOT
+
 # =========================================================
 
 @app.route("/chat", methods=["POST"])
 def chat():
 
-    try:
+```
+try:
 
-        # -----------------------------------------------------
-        # Check Gemini API
-        # -----------------------------------------------------
+    # Check API key
+    if client is None:
+        return jsonify({
+            "status": "error",
+            "error_type": "ConfigurationError",
+            "error": "GEMINI_API_KEY is not configured in Render."
+        }), 500
 
-        if client is None:
-            return jsonify({
-                "status": "error",
-                "error": "Gemini API key is not configured"
-            }), 500
+    # Get JSON
+    data = request.get_json(silent=True)
 
+    if not data:
+        return jsonify({
+            "status": "error",
+            "error_type": "InvalidJSON",
+            "error": "JSON data is required."
+        }), 400
 
-        # -----------------------------------------------------
-        # Get JSON data
-        # -----------------------------------------------------
+    # Get question
+    question = data.get("question", "")
 
-        data = request.get_json()
+    if not isinstance(question, str) or not question.strip():
+        return jsonify({
+            "status": "error",
+            "error_type": "MissingQuestion",
+            "error": "Question is required."
+        }), 400
 
-        if not data:
-            return jsonify({
-                "status": "error",
-                "error": "JSON data is required"
-            }), 400
+    # =====================================================
+    # CHAT PROMPT
+    # =====================================================
 
+    prompt = f"""
+```
 
-        # -----------------------------------------------------
-        # Get question
-        # -----------------------------------------------------
-
-        question = data.get(
-            "question",
-            ""
-        )
-
-
-        # -----------------------------------------------------
-        # Check question
-        # -----------------------------------------------------
-
-        if not isinstance(question, str) or not question.strip():
-
-            return jsonify({
-                "status": "error",
-                "error": "Question is required"
-            }), 400
-
-
-        # =====================================================
-        # CHATBOT PROMPT
-        # =====================================================
-
-        prompt = f"""
-You are AquaSense AI, an AI assistant
+You are AquaSense AI, an intelligent assistant
 for aquaculture and water quality monitoring.
 
 User question:
@@ -276,97 +263,82 @@ Answer in simple and understandable language.
 
 Focus on:
 
-- Fish farming
-- Water quality
-- pH
-- Dissolved oxygen
-- Turbidity
-- Temperature
-- BOD
-- Pond management
+* Fish farming
+* Water quality
+* pH
+* Dissolved oxygen
+* Turbidity
+* Temperature
+* BOD
+* Pond management
 
-Important instructions:
+Rules:
 
-- Do not invent sensor readings.
-- Do not pretend to have access to sensor data unless it is provided.
-- Do not provide unsafe chemical treatment instructions.
-- Give practical and general aquaculture guidance.
-"""
+* Do not invent sensor readings.
+* Do not claim to have sensor data unless the user provides it.
+* Do not provide dangerous chemical dosages.
+* Do not recommend unsafe chemical treatments.
+* Give practical general guidance.
+  """
 
+  ```
+    # =====================================================
+    # GEMINI REQUEST
+    # =====================================================
 
-        # =====================================================
-        # GEMINI GENERATION
-        # =====================================================
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt
+    )
 
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=prompt
-        )
+    answer = response.text
 
+    if not answer:
+        answer = "Gemini returned an empty response."
 
-        # -----------------------------------------------------
-        # Get AI response
-        # -----------------------------------------------------
-
-        answer = response.text if response.text else "No AI response generated."
-
-
-        # =====================================================
-        # SUCCESS RESPONSE
-        # =====================================================
-
-        return jsonify({
-            "status": "success",
-            "answer": answer
-        }), 200
-
-
-    # =========================================================
-    # GENERAL ERROR
-    # =========================================================
-
-    except Exception as e:
-
-        print("====================================")
-        print("CHAT GEMINI ERROR")
-        print("====================================")
-        print(traceback.format_exc())
-
-        return jsonify({
-            "status": "error",
-            "error_type": type(e).__name__,
-            "error": str(e)
-        }), 500
-
-
-# =========================================================
-# HEALTH CHECK
-# =========================================================
-
-@app.route("/health", methods=["GET"])
-def health():
+    # =====================================================
+    # SUCCESS
+    # =====================================================
 
     return jsonify({
-        "status": "healthy",
-        "gemini": "enabled" if client else "disabled"
-    })
+        "status": "success",
+        "answer": answer
+    }), 200
+  ```
 
+  except Exception as e:
+
+  ```
+    print("==========================================")
+    print("AquaSense AI - CHAT ERROR")
+    print("==========================================")
+    print(traceback.format_exc())
+
+    return jsonify({
+        "status": "error",
+        "error_type": type(e).__name__,
+        "error": str(e)
+    }), 500
+  ```
 
 # =========================================================
+
 # RUN SERVER
+
 # =========================================================
 
-if __name__ == "__main__":
+if **name** == "**main**":
 
-    port = int(
-        os.environ.get(
-            "PORT",
-            5000
-        )
+```
+port = int(
+    os.environ.get(
+        "PORT",
+        5000
     )
+)
 
-    app.run(
-        host="0.0.0.0",
-        port=port
-    )
+app.run(
+    host="0.0.0.0",
+    port=port
+)
 ```
